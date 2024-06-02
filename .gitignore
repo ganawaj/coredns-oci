@@ -15,7 +15,14 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
+build/
+
+.dockerignore
+go.mod
+go.sum
+
+Corefile
 
 # Go workspace file
 go.work
