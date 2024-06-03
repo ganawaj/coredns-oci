@@ -17,6 +17,7 @@ import (
 var log = clog.NewWithPlugin("oci")
 
 const (
+
 	// DefaultInterval is the minimum interval to delay before
 	// requesting another oci fetch
 	DefaultInterval time.Duration = time.Hour
@@ -62,6 +63,7 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
+// parse parses the Corefile and returns an OCI object
 func parse(c *caddy.Controller) (OCI, error) {
 
 	var oci OCI
@@ -71,7 +73,7 @@ func parse(c *caddy.Controller) (OCI, error) {
 	for c.Next() {
 
 		repo := &Artifact{Interval: DefaultInterval, Path: config.Root, loginRequired: false}
-		cred := auth.EmptyCredential
+		cred := auth.EmptyCredential // create an empty credential
 
 		args := c.RemainingArgs()
 
@@ -133,10 +135,12 @@ func parse(c *caddy.Controller) (OCI, error) {
 			return nil, plugin.Error("oci", fmt.Errorf("no URL set"))
 		}
 
+		// if path is not specified, return error
 		if repo.Path == "" {
 			return nil, plugin.Error("oci", fmt.Errorf("no path set"))
 		}
 
+		// if username and password are not set, set loginRequired to false
 		if cred != auth.EmptyCredential {
 			repo.Credential = cred
 			repo.loginRequired = true

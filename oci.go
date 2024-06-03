@@ -3,28 +3,19 @@ package oci
 import (
 	"context"
 	"fmt"
-	// "net/http"
 
-	// "os"
 	"time"
 
-	// _ "crypto/sha256"
-
-	// "github.com/opencontainers/go-digest"
-	// "oras.land/oras-go/v2/registry"
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/content/memory"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
-	// "oras.land/oras-go/v2/registry/remote/credentials"
 	"oras.land/oras-go/v2/registry/remote/retry"
-	// ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 const (
 	numRetries = 10
-	latestTag  = "{latest}"
 )
 
 type OCI []*Artifact
@@ -64,15 +55,25 @@ type Artifact struct {
 	loginRequired bool
 }
 
+// Pulls the artifact from the remote repository.
+//
+// A background context is created with a default timeout of 30 seconds. The artifact is pulled with this context
+// with a max retry count of 10.
+//
+// During the pull the artifact is copied from the remote repository to a temporary memory store
+// and then to a file store.
+//
+// The artifact is pulled only if the user defined interval has passed since the last pull.
+//
+// Users should be careful to respect the rate limits of the remote repository.
 func (a *Artifact) Pull(c context.Context) error {
 
 	// If the artifact has already been pulled and the interval has not passed, return
 	if time.Since(a.lastPull) < a.Interval {
-		// log.Debug("artifact has already been pulled")
 		return nil
 	}
 
-	// Create a new context with a timeout of 10 seconds
+	// Create a new context with a timeout of 30 seconds
 	ctx, cancel := context.WithTimeout(c, 30*time.Second)
 	defer cancel()
 
@@ -119,6 +120,9 @@ func (a *Artifact) Pull(c context.Context) error {
 	}
 }
 
+// Pulls the artifact from the remote repository.
+//
+// The artifact is copied from the remote repository to a memory store and then to a file store.
 func (a *Artifact) pull(c context.Context) error {
 
 	log.Infof("pulling artifact %s:%s from %s\n", a.Repository, a.Reference, a.Registry)
@@ -169,12 +173,14 @@ func (a *Artifact) Setup() error {
 		return err
 	}
 
+	// show the user the warnings from the repo if any occur
 	r.HandleWarning = func(warning remote.Warning) {
 		log.Infof("Warning from %s: %s\n", r.Reference.Repository, warning.Text)
 	}
 
 	a.remote = r
 
+	// Define reference for ease of use
 	a.Registry = a.remote.Reference.Registry
 	a.Repository = a.remote.Reference.Repository
 	a.Reference = a.remote.Reference.Reference
@@ -182,9 +188,10 @@ func (a *Artifact) Setup() error {
 	return nil
 }
 
+// Logs in to the registry if required
 func (a *Artifact) Login(c context.Context) error {
 
-	if a.loginRequired == false {
+	if !a.loginRequired {
 		return nil
 	}
 
