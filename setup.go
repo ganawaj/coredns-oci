@@ -125,6 +125,12 @@ func parse(c *caddy.Controller) (OCI, error) {
 				}
 				cred.Password = c.Val()
 
+			case "insecure":
+				if !c.NextArg() {
+					return nil, plugin.Error("oci", c.ArgErr())
+				}
+				repo.insecure = c.Val() == "true"
+
 			default:
 				return nil, plugin.Error("oci", c.ArgErr())
 			}
@@ -138,6 +144,14 @@ func parse(c *caddy.Controller) (OCI, error) {
 		// if path is not specified, return error
 		if repo.Path == "" {
 			return nil, plugin.Error("oci", fmt.Errorf("no path set"))
+		}
+
+		if cred.Username == "" && cred.Password != "" {
+			return nil, plugin.Error("oci", fmt.Errorf("username is required when password is set"))
+		}
+
+		if cred.Username != "" && cred.Password == "" {
+			return nil, plugin.Error("oci", fmt.Errorf("password is required when username is set"))
 		}
 
 		// if username and password are not set, set loginRequired to false

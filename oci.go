@@ -9,6 +9,7 @@ import (
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/content/memory"
+	// "oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
@@ -53,6 +54,8 @@ type Artifact struct {
 	pulled        bool
 	lastPull      time.Time
 	loginRequired bool
+
+	insecure bool
 }
 
 // Pulls the artifact from the remote repository.
@@ -173,6 +176,14 @@ func (a *Artifact) Setup() error {
 		return err
 	}
 
+	if r.Reference.Reference == "" {
+		log.Debugf("no reference specified, using latest\n")
+		r, err = remote.NewRepository(fmt.Sprintf("%s:latest", a.URL))
+		if err != nil {
+			return err
+		}
+	}
+
 	// show the user the warnings from the repo if any occur
 	r.HandleWarning = func(warning remote.Warning) {
 		log.Infof("Warning from %s: %s\n", r.Reference.Repository, warning.Text)
@@ -214,5 +225,10 @@ func (a *Artifact) Prepare() error {
 		return err
 	}
 
-	return nil // return nil if the artifact was successfully prepared
+  // Set the remote repository to use plain HTTP
+	if a.insecure {
+		a.remote.PlainHTTP = true
+	}
+
+	return nil
 }

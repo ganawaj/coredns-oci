@@ -2,85 +2,164 @@ package oci
 
 import (
 	// "context"
+	// "fmt"
 	"testing"
 
 	"github.com/coredns/caddy"
+	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
-// func TestLogin(t *testing.T) {
-// 	tests := []struct {
-// 		input     string
-// 		shouldErr bool
-// 		expected	*Artifact
-// 		}{
-// 			// test docker oci registry
-// 			// lets also test username and password parsing
-// 			{`oci registry-1.docker.io/ganawaj/demo:0.0.1 {
-// 				path /tmp/git1
-// 				username user
-// 				password DCKR_PAT_sdfsdfasdfasdfasdf
-// 			}`, false, &Artifact{
-// 				URL:  "registry-1.docker.io/ganawaj/demo:0.0.1",
-// 				Path: "/tmp/git1",
-// 				Credential: auth.Credential{
-// 					Username: "user",
-// 					Password: "DCKR_PAT_sdfsdfasdfasdfasdf",
-// 				},
-// 			}},
+func TestReferenceParse(t *testing.T) {
 
-// 			// test ghcr oci registry
-// 			// lets also test username and password parsing
-// 			{`oci ghcr.io/ganawaj/coredns:0.0.1 {
-// 				path /tmp/git1
-// 				username user
-// 				password GHCR_PAT_sdfsdfasdfasdfasdf
-// 			}`, false, &Artifact{
-// 				URL:  "ghcr.io/ganawaj/coredns:0.0.1",
-// 				Path: "/tmp/git1",
-// 				Credential: auth.Credential{
-// 					Username: "user",
-// 					Password: "GHCR_PAT_sdfsdfasdfasdfasdf",
-// 				},
-// 			}},
+	given := []struct {
+		input     string
+		shouldErr bool
+		expected  registry.Reference
+		}{
+			{`oci registry-1.docker.io/ganawaj/demo:0.0.1 example`,
+			false,
+			registry.Reference{
+				Registry:   "registry-1.docker.io",
+				Repository: "ganawaj/demo",
+				Reference:  "0.0.1",
+			},
+			},
+			{`oci ghcr.io/ganawaj/demo:0.0.2 example`,
+			false,
+			registry.Reference{
+				Registry:   "ghcr.io",
+				Repository: "ganawaj/demo",
+				Reference:  "0.0.2",
+			},
+			},
+			{`oci localhost:5000/ganawaj/demo:v1.9.3 example`,
+			false,
+			registry.Reference{
+				Registry:   "localhost:5000",
+				Repository: "ganawaj/demo",
+				Reference:  "v1.9.3",
+			},
+		},
+		// this correctly fails becuase of invalid sha but the error message is not helpful
+		// {`oci localhost:5000/ganawaj/demo:sha256@345345345345 example`,
+		// 	true,
+		// 	registry.Reference{
+		// 		Registry:   "localhost:5000",
+		// 		Repository: "ganawaj/demo",
+		// 		Reference:  "sha256@345345345345",
+		// 	},
+		// },
+		{`oci localhost:5000/ganawaj/demo example`,
+			false,
+			registry.Reference{
+				Registry:   "localhost:5000",
+				Repository: "ganawaj/demo",
+				Reference:  "latest",
+			},
+		},
+	}
 
-// 			// test no credentials are provided
-// 			{`oci ghcr.io/ganawaj/coredns:0.0.1 {
-// 						path /tmp/git1
-// 			}`, false, &Artifact{
-// 				URL:  "ghcr.io/ganawaj/coredns:0.0.1",
-// 				Path: "/tmp/git1",
-// 				Credential: auth.Credential{},
-// 			}},
-// 		}
+	for i, test := range given {
 
-// 		for i, test := range tests {
+		c := caddy.NewTestController("dns", test.input)
+		repo, err := parse(c)
 
-// 			c := caddy.NewTestController("dns", test.input)
 
-// 			oci, _ := parse(c)
+		if !test.shouldErr && err != nil {
+			t.Errorf("Test %v should not error but found %v", i, err)
+			continue
+		}
 
-// 			ctx := context.Background()
+		if test.shouldErr && err == nil {
+			t.Errorf("Test %v should error but found nil", i)
+			continue
+		}
 
-// 			for _, repo := range oci {
+		a := repo.Artifact(0)
+		if a.remote.Reference != test.expected {
+			t.Errorf("Test %v expects %v but found %v", i, test.expected, a.Reference)
+		}
+	}
+}
 
-// 				err := repo.Login(ctx)
+func TestLogin (t *testing.T) {
 
-// 				if !test.shouldErr && err != nil {
-// 					t.Errorf("Test %v should not error but found %v", i, err)
-// 					continue
-// 				}
+	given := []struct {
+		input     string
+		shouldErr bool
+		}{
+			{`oci registry-1.docker.io/ganawaj/demo:0.0.1 {
+				path /tmp/git1
+				 username user
+				 password DCKR_PAT_sdfsdfasdfasdfasdf
+			 }`,
+			false,
+			},
+			{`oci registry-1.docker.io/ganawaj/demo:0.0.1 {
+				path /tmp/git1
+				 username user
+			 }`,
+			true,
+			},
+			{`oci registry-1.docker.io/ganawaj/demo:0.0.1 {
+				path /tmp/git1
+				password DCKR_PAT_sdfsdfasdfasdfasdf
+			 }`,
+			true,
+			},
+		}
 
-// 				if test.shouldErr && err == nil {
-// 					t.Errorf("Test %v should error but found nil", i)
-// 					continue
-// 				}
+	for i, test := range given {
 
-// 				if repo.
-// 			}
+		c := caddy.NewTestController("dns", test.input)
+		_, err := parse(c)
 
-// 		}
-// 	}
+		if !test.shouldErr && err != nil {
+			t.Errorf("Test %v should not error but found %v", i, err)
+			continue
+		}
+
+		if test.shouldErr && err == nil {
+			t.Errorf("Test %v should error but found nil", i)
+			continue
+		}
+
+	}
+}
+
+
+func TestLoginRequired(t *testing.T) {
+
+	given := []struct {
+				input     string
+				shouldErr bool
+				}{
+					{`oci registry-1.docker.io/ganawaj/demo:0.0.1 {
+						path /tmp/git1
+		 				username user
+		 				password DCKR_PAT_sdfsdfasdfasdfasdf
+		 			}`,
+					false,
+					},
+				}
+
+	for _, test := range given {
+
+		c := caddy.NewTestController("dns", test.input)
+		oci, err := parse(c)
+
+		if err != nil && !test.shouldErr{
+			t.Errorf("Test should not error but found %v", err)
+		}
+
+		repo := oci.Artifact(0)
+		if !repo.loginRequired {
+			t.Errorf("Test should require login but found false")
+		}
+
+}
+}
 
 func TestOCIParse(t *testing.T) {
 	tests := []struct {
