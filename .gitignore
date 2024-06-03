@@ -27,3 +27,6 @@ Corefile
 # Go workspace file
 go.work
 go.work.sum
+
+vendor_build/
+/docs 

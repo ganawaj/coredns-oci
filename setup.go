@@ -11,6 +11,7 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
+	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
 var log = clog.NewWithPlugin("oci")
@@ -69,7 +70,8 @@ func parse(c *caddy.Controller) (OCI, error) {
 
 	for c.Next() {
 
-		repo := &Artifact{Interval: DefaultInterval, Path: config.Root}
+		repo := &Artifact{Interval: DefaultInterval, Path: config.Root, loginRequired: false}
+		cred := auth.EmptyCredential
 
 		args := c.RemainingArgs()
 
@@ -108,6 +110,19 @@ func parse(c *caddy.Controller) (OCI, error) {
 					return nil, plugin.Error("git", c.ArgErr())
 				}
 				repo.Path = fetchPath(c.Val())
+
+			case "username":
+				if !c.NextArg() {
+					return nil, plugin.Error("oci", c.ArgErr())
+				}
+				cred.Username = c.Val()
+
+			case "password":
+				if !c.NextArg() {
+					return nil, plugin.Error("oci", c.ArgErr())
+				}
+				cred.Password = c.Val()
+
 			default:
 				return nil, plugin.Error("oci", c.ArgErr())
 			}
@@ -120,6 +135,11 @@ func parse(c *caddy.Controller) (OCI, error) {
 
 		if repo.Path == "" {
 			return nil, plugin.Error("oci", fmt.Errorf("no path set"))
+		}
+
+		if cred != auth.EmptyCredential {
+			repo.Credential = cred
+			repo.loginRequired = true
 		}
 
 		// prepare repo for use

@@ -16,8 +16,9 @@ import (
 	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/content/memory"
 	"oras.land/oras-go/v2/registry/remote"
-	// "oras.land/oras-go/v2/registry/remote/auth"
-	// "oras.land/oras-go/v2/registry/remote/retry"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	// "oras.land/oras-go/v2/registry/remote/credentials"
+	"oras.land/oras-go/v2/registry/remote/retry"
 	// ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -55,15 +56,19 @@ type Artifact struct {
 	// for the format of the reference
 	Reference string
 
-	pulled   bool
-	lastPull time.Time
+	// credentials
+	Credential auth.Credential
+
+	pulled        bool
+	lastPull      time.Time
+	loginRequired bool
 }
 
 func (a *Artifact) Pull(c context.Context) error {
 
 	// If the artifact has already been pulled and the interval has not passed, return
 	if time.Since(a.lastPull) < a.Interval {
-		log.Debug("artifact has already been pulled")
+		// log.Debug("artifact has already been pulled")
 		return nil
 	}
 
@@ -164,11 +169,32 @@ func (a *Artifact) Setup() error {
 		return err
 	}
 
+	r.HandleWarning = func(warning remote.Warning) {
+		log.Infof("Warning from %s: %s\n", r.Reference.Repository, warning.Text)
+	}
+
 	a.remote = r
 
 	a.Registry = a.remote.Reference.Registry
 	a.Repository = a.remote.Reference.Repository
 	a.Reference = a.remote.Reference.Reference
+
+	return nil
+}
+
+func (a *Artifact) Login(c context.Context) error {
+
+	if a.loginRequired == false {
+		return nil
+	}
+
+	a.remote.Client = &auth.Client{
+		Client:     retry.DefaultClient,
+		Cache:      auth.NewCache(),
+		Credential: auth.StaticCredential(a.Registry, a.Credential),
+	}
+
+	log.Infof("logged in to %s as %s\n", a.Registry, a.Credential.Username)
 
 	return nil
 }
