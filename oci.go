@@ -130,34 +130,22 @@ func (a *Artifact) pull(c context.Context) error {
 
 	log.Infof("pulling artifact %s:%s from %s\n", a.Repository, a.Reference, a.Registry)
 
-	// create a temporary memory store
-	memoryStore := memory.New()
-
-	// Copy the artifact from the remote repository to the memory store
-	desc, err := oras.Copy(c, a.remote, a.Reference, memoryStore, a.Reference, oras.DefaultCopyOptions)
-	if err != nil {
-		return err
-	}
-
-	log.Debugf("copied artifact %s:%s to memory store\n", a.Repository, a.Reference)
-
 	// Create a new file store
-	a.fs, err = file.New(a.Path)
-	if err != nil {
-		return err
+	var fsErr error
+	a.fs, fsErr = file.New(a.Path)
+	if fsErr != nil {
+		return fsErr
 	}
 
-	log.Debugf("created file store at %s\n", a.Path)
 	defer a.fs.Close()
 
-	// Copy the artifact from the memory store to the file store
-	desc, err = oras.Copy(c, memoryStore, a.Reference, a.fs, a.Reference, oras.DefaultCopyOptions)
+	// Copy the artifact from the remote repository to the memory store
+	desc, err := oras.Copy(c, a.remote, a.Reference, a.fs, a.Reference, oras.DefaultCopyOptions)
 	if err != nil {
-		log.Errorf("%s:%s: %v\n", a.Repository, a.Reference, err)
 		return err
 	}
 
-	// Check if the copy from memory store to file store was successful
+	// Check if the copy to file store was successful
 	exists, err := a.fs.Exists(c, desc)
 	if exists && err == nil {
 		log.Infof("pulled artifact %s:%s with %s from %s\n", a.Repository, a.Reference, desc.Digest, a.Registry)
@@ -165,6 +153,7 @@ func (a *Artifact) pull(c context.Context) error {
 	}
 
 	return err // return the error if the pull was not successful
+
 }
 
 // Parses and creates the remote repository based on the URL
