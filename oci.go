@@ -214,6 +214,14 @@ func (a *Artifact) Prepare() error {
 		return err
 	}
 
+	// Login to the registry if required
+	if a.loginRequired {
+		err := a.Login(context.Background())
+		if err != nil {
+			return err
+		}
+	}
+
   // Set the remote repository to use plain HTTP
 	if a.insecure {
 		a.remote.PlainHTTP = true

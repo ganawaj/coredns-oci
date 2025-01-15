@@ -15,15 +15,6 @@ var (
 // if the pull fails or returns any errors.
 func Start(a *Artifact, ctx context.Context) {
 
-	// Login to registries if required
-	// TODO: This potentially should be done during the parse to avoid errors during the pull
-	if a.loginRequired {
-		err := a.Login(ctx)
-		if err != nil {
-			log.Error(err)
-		}
-	}
-
 	go func(a *Artifact) {
 		for {
 
