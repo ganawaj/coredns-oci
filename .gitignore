@@ -29,4 +29,4 @@ go.work
 go.work.sum
 
 vendor_build/
-/docs 
+/docs

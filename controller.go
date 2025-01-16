@@ -2,41 +2,64 @@ package oci
 
 import (
 	"context"
+	b "github.com/cenkalti/backoff/v5"
 	"time"
 )
 
 var (
-	DefaultBackoff = time.Second * 30
+	DefaltDeadline       = 60 * time.Second
+	DefaultRetryInterval = 10 * time.Second
+	DefaultRetryCount    = 3
 )
 
 // Start starts the artifact pull process in the background.
 //
-// To attempt to respect the rate limits of the registry, a backoff of 30 seconds is used between retries
-// if the pull fails or returns any errors.
+// To attempt to respect the rate limits of the registry:
+// - the pull operation has 60(DefaltDeadline) seconds to complete.
+// - the pull operation will retry every 10 seconds.
+// - the pull operation will try no more than 3 times.
+// The next pull operation is scheduled after a successful pull at the interval specified in the artifact.
 func Start(a *Artifact, ctx context.Context) {
 
-	// Login to registries if required
-	// TODO: This potentially should be done during the parse to avoid errors during the pull
-	if a.loginRequired {
-		err := a.Login(ctx)
-		if err != nil {
-			log.Error(err)
+	// Pull the artifact immediately
+	go PullWithRetry(ctx, a)
+
+	// Schedule the next pull operation
+	for {
+		select {
+
+		case <-time.After(a.Interval):
+			go PullWithRetry(ctx, a)
+
+		case <-ctx.Done():
+			return // context is cancelled
 		}
 	}
+}
 
-	go func(a *Artifact) {
-		for {
+func PullWithRetry(ctx context.Context, a *Artifact) {
 
-			err := a.Pull(ctx)
+	// Create a new context with a timeout of DefaltDeadline seconds
+	log.Debugf("creating context with timeout of %s seconds for artifact %s\n", DefaltDeadline, a.Reference)
+	pullCtx, cancel := context.WithTimeout(ctx, DefaltDeadline)
+	defer cancel()
 
-			if err != nil {
-				log.Error(err)
+	operation := func() (string, error) {
+		err := a.Pull(pullCtx)
+		return "", err
+	}
 
-				time.Sleep(DefaultBackoff) // sleep for a while before retrying
-				
-				continue
-			}
+	// Pull the artifact with retry and backoff
+	_, err := b.Retry(pullCtx, operation,
+		b.WithBackOff(b.NewConstantBackOff(DefaultRetryInterval)),
+		b.WithMaxTries(uint(DefaultRetryCount)),
+	)
 
-		}
-	}(a)
+	if err != nil {
+		log.Errorf("failed to pull artifact %s: %v\n", a.Reference, err)
+		return
+	}
+
+	log.Infof("successfully pulled artifact %s\n", a.Reference)
+
 }
