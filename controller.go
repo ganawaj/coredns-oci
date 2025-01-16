@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	DefaltDeadline       = 10 * time.Second
+	DefaltDeadline       = 60 * time.Second
 	DefaultRetryInterval = 10 * time.Second
 	DefaultRetryCount    = 3
 )
