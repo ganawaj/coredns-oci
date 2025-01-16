@@ -19,8 +19,6 @@ vendor/
 build/
 
 .dockerignore
-go.mod
-go.sum
 
 Corefile
 
