@@ -8,15 +8,11 @@ import (
 
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
-	"oras.land/oras-go/v2/content/memory"
-	// "oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
-)
+	"github.com/cenkalti/backoff/v5"
 
-const (
-	numRetries = 10
 )
 
 type OCI []*Artifact
@@ -50,83 +46,14 @@ type Artifact struct {
 
 	// credentials
 	Credential auth.Credential
-
-	pulled        bool
-	lastPull      time.Time
 	loginRequired bool
-
 	insecure bool
 }
 
 // Pulls the artifact from the remote repository.
 //
-// A background context is created with a default timeout of 30 seconds. The artifact is pulled with this context
-// with a max retry count of 10.
-//
-// During the pull the artifact is copied from the remote repository to a temporary memory store
-// and then to a file store.
-//
-// The artifact is pulled only if the user defined interval has passed since the last pull.
-//
-// Users should be careful to respect the rate limits of the remote repository.
-func (a *Artifact) Pull(c context.Context) error {
-
-	// If the artifact has already been pulled and the interval has not passed, return
-	if time.Since(a.lastPull) < a.Interval {
-		return nil
-	}
-
-	// Create a new context with a timeout of 30 seconds
-	ctx, cancel := context.WithTimeout(c, 30*time.Second)
-	defer cancel()
-
-	retryCount := 0
-	maxRetries := numRetries
-
-	var err error
-
-	for {
-		select {
-		case <-ctx.Done():
-
-			// If the context is done, return the context's error
-			return ctx.Err()
-
-		default:
-
-			// Try to pull the artifact
-			err = a.pull(ctx)
-
-			if err == nil {
-
-				// Update the last pull time
-				a.lastPull = time.Now()
-				a.pulled = true
-
-				// If the pull was successful, return nil
-				return nil
-			} else {
-				log.Errorf("failed to pull artifact %s:%s from %s: %v\n", a.Repository, a.Reference, a.Registry, err)
-			}
-
-			// If the pull failed, increment the retry count
-			retryCount++
-			if retryCount >= maxRetries {
-				// If the maximum number of retries has been reached, cancel the context and return the error
-				cancel()
-				return fmt.Errorf("maximum number of retries reached: %w", err)
-			}
-
-			// If the pull failed and the maximum number of retries has not been reached, sleep for a while before retrying
-			time.Sleep(time.Second)
-		}
-	}
-}
-
-// Pulls the artifact from the remote repository.
-//
 // The artifact is copied from the remote repository to a memory store and then to a file store.
-func (a *Artifact) pull(c context.Context) error {
+func (a *Artifact) Pull(c context.Context) error {
 
 	log.Infof("pulling artifact %s:%s from %s\n", a.Repository, a.Reference, a.Registry)
 
@@ -134,7 +61,8 @@ func (a *Artifact) pull(c context.Context) error {
 	var fsErr error
 	a.fs, fsErr = file.New(a.Path)
 	if fsErr != nil {
-		return fsErr
+		log.Errorf("failed to create file store: %v\n", fsErr)
+		return backoff.Permanent(fsErr)
 	}
 
 	defer a.fs.Close()
@@ -142,6 +70,7 @@ func (a *Artifact) pull(c context.Context) error {
 	// Copy the artifact from the remote repository to the memory store
 	desc, err := oras.Copy(c, a.remote, a.Reference, a.fs, a.Reference, oras.DefaultCopyOptions)
 	if err != nil {
+		log.Errorf("failed to copy artifact %s:%s from %s: %v\n", a.Repository, a.Reference, a.Registry, err)
 		return err
 	}
 
