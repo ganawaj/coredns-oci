@@ -46,19 +46,34 @@ type Artifact struct {
 	// remote registry
 	remote *remote.Repository
 
-	// registry, repository, and reference of the artifact
-	Registry   string
-	Repository string
-
-	// tag or digest of the artifact
-	// see https://pkg.go.dev/oras.land/oras-go/v2@v2.5.0/registry#ParseReference
-	// for the format of the reference
-	Reference string
-
 	// credentials and connection settings
 	Credential    auth.Credential
 	loginRequired bool
 	insecure      bool
+}
+
+// Registry returns the registry name from the remote reference
+func (a *Artifact) Registry() string {
+	if a.remote == nil || a.remote.Reference == nil {
+		return ""
+	}
+	return a.remote.Reference.Registry
+}
+
+// Repository returns the repository name from the remote reference
+func (a *Artifact) Repository() string {
+	if a.remote == nil || a.remote.Reference == nil {
+		return ""
+	}
+	return a.remote.Reference.Repository
+}
+
+// Reference returns the tag or digest from the remote reference
+func (a *Artifact) Reference() string {
+	if a.remote == nil || a.remote.Reference == nil {
+		return ""
+	}
+	return a.remote.Reference.Reference
 }
 
 // Pull downloads the artifact from the remote repository to the local file system.
@@ -67,7 +82,7 @@ func (a *Artifact) Pull(ctx context.Context) error {
 		return errors.New("context cannot be nil")
 	}
 
-	log.Infof("Pulling artifact from %s/%s:%s", a.Registry, a.Repository, a.Reference)
+	log.Infof("Pulling artifact from %s/%s:%s", a.Registry(), a.Repository(), a.Reference())
 
 	// Create a new file store
 	var fsErr error
@@ -79,9 +94,9 @@ func (a *Artifact) Pull(ctx context.Context) error {
 	defer a.fs.Close()
 
 	// Copy the artifact from the remote repository to the file store
-	desc, err := oras.Copy(ctx, a.remote, a.Reference, a.fs, a.Reference, oras.DefaultCopyOptions)
+	desc, err := oras.Copy(ctx, a.remote, a.Reference(), a.fs, a.Reference(), oras.DefaultCopyOptions)
 	if err != nil {
-		log.Errorf("Failed to copy artifact %s/%s:%s: %v", a.Registry, a.Repository, a.Reference, err)
+		log.Errorf("Failed to copy artifact %s/%s:%s: %v", a.Registry(), a.Repository(), a.Reference(), err)
 		return fmt.Errorf("failed to copy artifact: %w", err)
 	}
 
@@ -94,7 +109,7 @@ func (a *Artifact) Pull(ctx context.Context) error {
 		return errors.New("artifact not found after copy")
 	}
 
-	log.Infof("Successfully pulled artifact %s/%s:%s with digest %s", a.Registry, a.Repository, a.Reference, desc.Digest)
+	log.Infof("Successfully pulled artifact %s/%s:%s with digest %s", a.Registry(), a.Repository(), a.Reference(), desc.Digest)
 
 	return nil
 }
@@ -102,7 +117,6 @@ func (a *Artifact) Pull(ctx context.Context) error {
 // Prepare initializes the artifact by setting up the repository configuration
 // and performing authentication if credentials are provided.
 func (a *Artifact) Prepare() error {
-
 	// Create a new remote repository
 	r, err := remote.NewRepository(a.URL)
 	if err != nil {
@@ -122,9 +136,6 @@ func (a *Artifact) Prepare() error {
 	}
 
 	a.remote = r
-	a.Registry = r.Reference.Registry
-	a.Repository = r.Reference.Repository
-	a.Reference = r.Reference.Reference
 
 	// if credentials are provided, perform login
 	if a.Credential != auth.EmptyCredential {
@@ -162,10 +173,10 @@ func (a *Artifact) Login(ctx context.Context) error {
 	a.remote.Client = &auth.Client{
 		Client:     retry.DefaultClient,
 		Cache:      auth.NewCache(),
-		Credential: auth.StaticCredential(a.Registry, a.Credential),
+		Credential: auth.StaticCredential(a.Registry(), a.Credential),
 	}
 
-	log.Infof("Successfully logged in to %s as %s", a.Registry, a.Credential.Username)
+	log.Infof("Successfully logged in to %s as %s", a.Registry(), a.Credential.Username)
 
 	return nil
 }
