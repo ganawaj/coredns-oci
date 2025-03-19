@@ -41,8 +41,10 @@ func Start(a *Artifact, ctx context.Context) {
 
 func PullWithRetry(ctx context.Context, a *Artifact) {
 
+	start := time.Now()
+
 	// Create a new context with a timeout of DefaltDeadline seconds
-	log.Debugf("creating context with timeout of %s seconds for artifact %s\n", DefaltDeadline, a.Reference)
+	log.Debugf("creating context with timeout of %s seconds for artifact %s\n", DefaltDeadline, a.Reference())
 	pullCtx, cancel := context.WithTimeout(ctx, DefaltDeadline)
 	defer cancel()
 
@@ -58,10 +60,10 @@ func PullWithRetry(ctx context.Context, a *Artifact) {
 	)
 
 	if err != nil {
-		log.Errorf("failed to pull artifact %s: %v\n", a.Reference, err)
+		log.Errorf("Failed to pull artifact %s: %v\n", a.Reference(), err)
 		return
 	}
 
-	log.Infof("successfully pulled artifact %s\n", a.Reference)
+	log.Infof("Successfully pulled artifact %s/%s:%s in %s\n", a.Registry(), a.Repository(), a.Reference(), time.Since(start))
 
 }

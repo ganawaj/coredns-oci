@@ -53,7 +53,10 @@ func TestArtifactPull(t *testing.T) {
 			t.Errorf("Test should not error but found %v", err)
 		}
 
-		repo := oci.Artifact(0)
+		repo, err := oci.Artifact(0)
+		if err != nil {
+			t.Errorf("Test should not error but found %v", err)
+		}
 
 		ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 		defer cancel()
@@ -126,9 +129,12 @@ func TestReferenceParse(t *testing.T) {
 			continue
 		}
 
-		a := repo.Artifact(0)
+		a, err := repo.Artifact(0)
+		if err != nil {
+			t.Errorf("Test should not error but found %v", err)
+		}
 		if a.remote.Reference != test.expected {
-			t.Errorf("Test %v expects %v but found %v", i, test.expected, a.Reference)
+			t.Errorf("Test %v expects %v but found %v", i, test.expected, a.Reference())
 		}
 	}
 }
@@ -202,7 +208,10 @@ func TestLoginRequired(t *testing.T) {
 			t.Errorf("Test should not error but found %v", err)
 		}
 
-		repo := oci.Artifact(0)
+		repo, err := oci.Artifact(0)
+		if err != nil {
+			t.Errorf("Test should not error but found %v", err)
+		}
 		if !repo.loginRequired {
 			t.Errorf("Test should require login but found false")
 		}
@@ -225,6 +234,7 @@ func TestOCIParse(t *testing.T) {
 		}`, false, &Artifact{
 			URL:  "registry-1.docker.io/ganawaj/demo:0.0.1",
 			Path: "/tmp/git1",
+			Interval:   180 * time.Second,
 			Credential: auth.Credential{
 				Username: "user",
 				Password: "DCKR_PAT_sdfsdfasdfasdfasdf",
@@ -240,6 +250,7 @@ func TestOCIParse(t *testing.T) {
 		}`, false, &Artifact{
 			URL:  "ghcr.io/ganawaj/coredns:0.0.1",
 			Path: "/tmp/git1",
+			Interval:   180 * time.Second,
 			Credential: auth.Credential{
 				Username: "user",
 				Password: "GHCR_PAT_sdfsdfasdfasdfasdf",
@@ -251,6 +262,18 @@ func TestOCIParse(t *testing.T) {
 					path /tmp/git1
 		}`, false, &Artifact{
 			URL:        "ghcr.io/ganawaj/coredns:0.0.1",
+			Interval:   180 * time.Second,
+			Path:       "/tmp/git1",
+			Credential: auth.Credential{},
+		}},
+
+		// test that interval is set to minimum
+		{`oci ghcr.io/ganawaj/coredns:0.0.1 {
+			path /tmp/git1
+			interval 10s
+		}`, false, &Artifact{
+			URL:        "ghcr.io/ganawaj/coredns:0.0.1",
+			Interval:   180 * time.Second,
 			Path:       "/tmp/git1",
 			Credential: auth.Credential{},
 		}},
@@ -286,15 +309,19 @@ func reposEqual(expected, repo *Artifact) bool {
 		return repo == nil
 	}
 	if expected.Interval != 0 && expected.Interval != repo.Interval {
+		fmt.Printf("expected.Interval: %v, repo.Interval: %v\n", expected.Interval, repo.Interval)
 		return false
 	}
 	if expected.Path != "" && expected.Path != repo.Path {
+		fmt.Printf("expected.Path: %v, repo.Path: %v\n", expected.Path, repo.Path)
 		return false
 	}
 	if expected.URL != "" && expected.URL != repo.URL {
+		fmt.Printf("expected.URL: %v, repo.URL: %v\n", expected.URL, repo.URL)
 		return false
 	}
 	if expected.Credential != (auth.Credential{}) && expected.Credential != repo.Credential {
+		fmt.Printf("expected.Credential: %v, repo.Credential: %v\n", expected.Credential, repo.Credential)
 		return false
 	}
 	return true

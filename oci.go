@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/coredns/coredns/plugin/pkg/log"
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/registry/remote"
@@ -54,7 +53,7 @@ type Artifact struct {
 
 // Registry returns the registry name from the remote reference
 func (a *Artifact) Registry() string {
-	if a.remote == nil || a.remote.Reference == nil {
+	if a.remote == nil {
 		return ""
 	}
 	return a.remote.Reference.Registry
@@ -62,7 +61,7 @@ func (a *Artifact) Registry() string {
 
 // Repository returns the repository name from the remote reference
 func (a *Artifact) Repository() string {
-	if a.remote == nil || a.remote.Reference == nil {
+	if a.remote == nil {
 		return ""
 	}
 	return a.remote.Reference.Repository
@@ -70,7 +69,7 @@ func (a *Artifact) Repository() string {
 
 // Reference returns the tag or digest from the remote reference
 func (a *Artifact) Reference() string {
-	if a.remote == nil || a.remote.Reference == nil {
+	if a.remote == nil {
 		return ""
 	}
 	return a.remote.Reference.Reference
@@ -158,16 +157,9 @@ func (a *Artifact) Prepare() error {
 
 // Login authenticates with the registry if required.
 func (a *Artifact) Login(ctx context.Context) error {
+
 	if ctx == nil {
 		return errors.New("context cannot be nil")
-	}
-
-	if !a.loginRequired {
-		return nil
-	}
-
-	if a.Credential.Username == "" && a.Credential.Password == "" {
-		return errors.New("credentials required but not provided")
 	}
 
 	a.remote.Client = &auth.Client{
