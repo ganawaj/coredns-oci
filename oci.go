@@ -2,28 +2,39 @@ package oci
 
 import (
 	"context"
+	"errors"
 	"fmt"
-
 	"time"
 
+	"github.com/coredns/coredns/plugin/pkg/log"
 	oras "oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/retry"
-	"github.com/cenkalti/backoff/v5"
-
 )
 
+var (
+	// ErrInvalidArtifactIndex is returned when accessing an invalid artifact index
+	ErrInvalidArtifactIndex = errors.New("invalid artifact index")
+	// ErrEmptyURL is returned when the artifact URL is empty
+	ErrEmptyURL = errors.New("empty artifact URL")
+	// ErrEmptyPath is returned when the artifact path is empty
+	ErrEmptyPath = errors.New("empty artifact path")
+)
+
+// OCI is a list of artifacts
 type OCI []*Artifact
 
-func (o OCI) Artifact(i int) *Artifact {
-	if i < len(o) {
-		return o[i]
+// Artifact returns the artifact at index i
+func (o OCI) Artifact(i int) (*Artifact, error) {
+	if i < 0 || i >= len(o) {
+		return nil, fmt.Errorf("%w: index %d out of bounds [0,%d)", ErrInvalidArtifactIndex, i, len(o))
 	}
-	return nil
+	return o[i], nil
 }
 
+// Artifact represents a single OCI artifact with its configuration and state
 type Artifact struct {
 	URL      string
 	Interval time.Duration
@@ -44,84 +55,97 @@ type Artifact struct {
 	// for the format of the reference
 	Reference string
 
-	// credentials
-	Credential auth.Credential
+	// credentials and connection settings
+	Credential    auth.Credential
 	loginRequired bool
-	insecure bool
+	insecure      bool
 }
 
-// Pulls the artifact from the remote repository.
-//
-// The artifact is copied from the remote repository to a memory store and then to a file store.
-func (a *Artifact) Pull(c context.Context) error {
+// Pull downloads the artifact from the remote repository to the local file system.
+func (a *Artifact) Pull(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("context cannot be nil")
+	}
 
-	log.Infof("pulling artifact %s:%s from %s\n", a.Repository, a.Reference, a.Registry)
+	log.Infof("Pulling artifact from %s/%s:%s", a.Registry, a.Repository, a.Reference)
 
 	// Create a new file store
 	var fsErr error
 	a.fs, fsErr = file.New(a.Path)
 	if fsErr != nil {
-		log.Errorf("failed to create file store: %v\n", fsErr)
-		return backoff.Permanent(fsErr)
+		log.Errorf("Failed to create file store: %v", fsErr)
+		return fmt.Errorf("failed to create file store: %w", fsErr)
 	}
-
 	defer a.fs.Close()
 
-	// Copy the artifact from the remote repository to the memory store
-	desc, err := oras.Copy(c, a.remote, a.Reference, a.fs, a.Reference, oras.DefaultCopyOptions)
+	// Copy the artifact from the remote repository to the file store
+	desc, err := oras.Copy(ctx, a.remote, a.Reference, a.fs, a.Reference, oras.DefaultCopyOptions)
 	if err != nil {
-		log.Errorf("failed to copy artifact %s:%s from %s: %v\n", a.Repository, a.Reference, a.Registry, err)
-		return err
+		log.Errorf("Failed to copy artifact %s/%s:%s: %v", a.Registry, a.Repository, a.Reference, err)
+		return fmt.Errorf("failed to copy artifact: %w", err)
 	}
 
-	// Check if the copy to file store was successful
-	exists, err := a.fs.Exists(c, desc)
-	if exists && err == nil {
-		log.Infof("pulled artifact %s:%s with %s from %s\n", a.Repository, a.Reference, desc.Digest, a.Registry)
-		return nil
-	}
-
-	return err // return the error if the pull was not successful
-
-}
-
-// Parses and creates the remote repository based on the URL
-func (a *Artifact) Setup() error {
-
-	// Create a new remote repository
-	r, err := remote.NewRepository(a.URL)
+	// Verify the copy was successful
+	exists, err := a.fs.Exists(ctx, desc)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to verify artifact: %w", err)
+	}
+	if !exists {
+		return errors.New("artifact not found after copy")
 	}
 
-	if r.Reference.Reference == "" {
-		log.Debugf("no reference specified, using latest\n")
-		r, err = remote.NewRepository(fmt.Sprintf("%s:latest", a.URL))
-		if err != nil {
-			return err
-		}
-	}
-
-	// show the user the warnings from the repo if any occur
-	r.HandleWarning = func(warning remote.Warning) {
-		log.Infof("Warning from %s: %s\n", r.Reference.Repository, warning.Text)
-	}
-
-	a.remote = r
-
-	// Define reference for ease of use
-	a.Registry = a.remote.Reference.Registry
-	a.Repository = a.remote.Reference.Repository
-	a.Reference = a.remote.Reference.Reference
+	log.Infof("Successfully pulled artifact %s/%s:%s with digest %s", a.Registry, a.Repository, a.Reference, desc.Digest)
 
 	return nil
 }
 
-// Logs in to the registry if required
-func (a *Artifact) Login(c context.Context) error {
+// Setup initializes the remote repository configuration.
+func (a *Artifact) Setup() error {
+	if a.URL == "" {
+		return ErrEmptyURL
+	}
+	if a.Path == "" {
+		return ErrEmptyPath
+	}
+
+	// Create a new remote repository
+	r, err := remote.NewRepository(a.URL)
+	if err != nil {
+		return fmt.Errorf("failed to create repository: %w", err)
+	}
+
+	if r.Reference.Reference == "" {
+		log.Debugf("No reference specified for %s, using latest", a.URL)
+		r, err = remote.NewRepository(fmt.Sprintf("%s:latest", a.URL))
+		if err != nil {
+			return fmt.Errorf("failed to create repository with latest tag: %w", err)
+		}
+	}
+
+	r.HandleWarning = func(warning remote.Warning) {
+		log.Warningf("Repository %s: %s", r.Reference.Repository, warning.Text)
+	}
+
+	a.remote = r
+	a.Registry = r.Reference.Registry
+	a.Repository = r.Reference.Repository
+	a.Reference = r.Reference.Reference
+
+	return nil
+}
+
+// Login authenticates with the registry if required.
+func (a *Artifact) Login(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("context cannot be nil")
+	}
 
 	if !a.loginRequired {
 		return nil
+	}
+
+	if a.Credential.Username == "" && a.Credential.Password == "" {
+		return errors.New("credentials required but not provided")
 	}
 
 	a.remote.Client = &auth.Client{
@@ -130,30 +154,31 @@ func (a *Artifact) Login(c context.Context) error {
 		Credential: auth.StaticCredential(a.Registry, a.Credential),
 	}
 
-	log.Infof("logged in to %s as %s\n", a.Registry, a.Credential.Username)
+	log.Infof("Successfully logged in to %s as %s", a.Registry, a.Credential.Username)
 
 	return nil
 }
 
-// Prepare prepares the artifact for use
+// Prepare sets up the artifact for use by initializing the repository
+// and performing authentication if required.
 func (a *Artifact) Prepare() error {
-
-	// Setup the artifact
 	if err := a.Setup(); err != nil {
-		return err
+		return fmt.Errorf("setup failed: %w", err)
 	}
 
-	// Login to the registry if required
 	if a.loginRequired {
-		err := a.Login(context.Background())
-		if err != nil {
-			return err
+		// Use a timeout context for login
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := a.Login(ctx); err != nil {
+			return fmt.Errorf("login failed: %w", err)
 		}
 	}
 
-  // Set the remote repository to use plain HTTP
 	if a.insecure {
 		a.remote.PlainHTTP = true
+		log.Warningf("Using insecure plain HTTP connection for %s", a.URL)
 	}
 
 	return nil

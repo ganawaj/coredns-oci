@@ -12,6 +12,8 @@ var (
 	DefaultRetryCount    = 3
 )
 
+// Todo: the interval shouldn't be lower than the sum of the retry interval and the deadline
+
 // Start starts the artifact pull process in the background.
 //
 // To attempt to respect the rate limits of the registry:
