@@ -136,29 +136,34 @@ func parse(c *caddy.Controller) (OCI, error) {
 			}
 		}
 
+		if repo.Interval < 180*time.Second {
+			repo.Interval = 180 * time.Second
+			log.Warningf("Interval set to minimum of 180 seconds")
+		}
+
 		// if repo is not specified, return error
 		if repo.URL == "" {
+			log.Debugf("No URL set for repo %s", repo.Path)
 			return nil, plugin.Error("oci", fmt.Errorf("no URL set"))
 		}
 
 		// if path is not specified, return error
 		if repo.Path == "" {
+			log.Debugf("No path set for repo %s", repo.URL)
 			return nil, plugin.Error("oci", fmt.Errorf("no path set"))
 		}
 
 		if cred.Username == "" && cred.Password != "" {
+			log.Debugf("No username set for repo %s", repo.URL)
 			return nil, plugin.Error("oci", fmt.Errorf("username is required when password is set"))
 		}
 
-		if cred.Username != "" && cred.Password == "" {
-			return nil, plugin.Error("oci", fmt.Errorf("password is required when username is set"))
-		}
-
-		// if username and password are not set, set loginRequired to false
-		if cred != auth.EmptyCredential {
-			repo.Credential = cred
-			repo.loginRequired = true
-		}
+		// we'll handle login in the Prepare method and preform the check there
+		// // if username and password are not set, set loginRequired to false
+		// if cred != auth.EmptyCredential {
+		// 	repo.Credential = cred
+		// 	repo.loginRequired = true
+		// }
 
 		// prepare repo for use
 		if err := repo.Prepare(); err != nil {

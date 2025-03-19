@@ -99,14 +99,9 @@ func (a *Artifact) Pull(ctx context.Context) error {
 	return nil
 }
 
-// Setup initializes the remote repository configuration.
-func (a *Artifact) Setup() error {
-	if a.URL == "" {
-		return ErrEmptyURL
-	}
-	if a.Path == "" {
-		return ErrEmptyPath
-	}
+// Prepare initializes the artifact by setting up the repository configuration
+// and performing authentication if credentials are provided.
+func (a *Artifact) Prepare() error {
 
 	// Create a new remote repository
 	r, err := remote.NewRepository(a.URL)
@@ -130,6 +125,22 @@ func (a *Artifact) Setup() error {
 	a.Registry = r.Reference.Registry
 	a.Repository = r.Reference.Repository
 	a.Reference = r.Reference.Reference
+
+	// if credentials are provided, perform login
+	if a.Credential != auth.EmptyCredential {
+		// Use a timeout context for login
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := a.Login(ctx); err != nil {
+			return fmt.Errorf("login failed: %w", err)
+		}
+	}
+
+	if a.insecure {
+		a.remote.PlainHTTP = true
+		log.Warningf("Using insecure plain HTTP connection for %s", a.URL)
+	}
 
 	return nil
 }
@@ -155,31 +166,6 @@ func (a *Artifact) Login(ctx context.Context) error {
 	}
 
 	log.Infof("Successfully logged in to %s as %s", a.Registry, a.Credential.Username)
-
-	return nil
-}
-
-// Prepare sets up the artifact for use by initializing the repository
-// and performing authentication if required.
-func (a *Artifact) Prepare() error {
-	if err := a.Setup(); err != nil {
-		return fmt.Errorf("setup failed: %w", err)
-	}
-
-	if a.loginRequired {
-		// Use a timeout context for login
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := a.Login(ctx); err != nil {
-			return fmt.Errorf("login failed: %w", err)
-		}
-	}
-
-	if a.insecure {
-		a.remote.PlainHTTP = true
-		log.Warningf("Using insecure plain HTTP connection for %s", a.URL)
-	}
 
 	return nil
 }
