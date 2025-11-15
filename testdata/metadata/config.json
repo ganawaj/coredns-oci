@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "DNSZoneFile",
+  "metadata": {
+    "name": "example.org",
+    "version": "1.2.3",
+    "created": "2025-11-15T12:00:00Z",
+    "author": "dns-admin@example.org",
+    "description": "Test zone file for example.org"
+  },
+  "zone": {
+    "origin": "example.org.",
+    "ttl": 3600,
+    "serial": 2025111501,
+    "refresh": 7200,
+    "retry": 3600,
+    "expire": 1209600,
+    "minimum": 300,
+    "recordCount": 15,
+    "dnssecSigned": false
+  },
+  "validation": {
+    "syntax": "RFC1035",
+    "validated": true,
+    "validatedAt": "2025-11-15T11:59:00Z",
+    "validator": "named-checkzone",
+    "warnings": []
+  },
+  "deployment": {
+    "environments": ["test"],
+    "requiredPlugins": [],
+    "compatibility": {
+      "coredns": ">=1.10.0"
+    }
+  }
+}

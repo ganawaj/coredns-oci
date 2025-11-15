@@ -1,0 +1,40 @@
+$ORIGIN example.org.
+$TTL 3600
+@       IN      SOA     ns1.example.org. admin.example.org. (
+                        2025111501 ; serial
+                        7200       ; refresh
+                        3600       ; retry
+                        1209600    ; expire
+                        300        ; minimum
+                        )
+
+; Name servers
+@       IN      NS      ns1.example.org.
+@       IN      NS      ns2.example.org.
+
+; A records
+@       IN      A       192.0.2.1
+www     IN      A       192.0.2.2
+mail    IN      A       192.0.2.3
+ns1     IN      A       192.0.2.10
+ns2     IN      A       192.0.2.11
+
+; AAAA records
+@       IN      AAAA    2001:db8::1
+www     IN      AAAA    2001:db8::2
+
+; CNAME records
+ftp     IN      CNAME   www.example.org.
+blog    IN      CNAME   www.example.org.
+
+; MX records
+@       IN      MX      10 mail.example.org.
+@       IN      MX      20 mail2.example.org.
+
+; TXT records
+@       IN      TXT     "v=spf1 include:_spf.example.org ~all"
+_dmarc  IN      TXT     "v=DMARC1; p=reject"
+
+; SRV records
+_http._tcp      IN      SRV     0 5 80 www.example.org.
+_https._tcp     IN      SRV     0 5 443 www.example.org.

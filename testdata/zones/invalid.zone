@@ -1,0 +1,5 @@
+$ORIGIN invalid.zone.
+$TTL 3600
+; This zone file has invalid syntax
+@       IN      A       not-an-ip
+www     IN      AAAA    invalid-ipv6

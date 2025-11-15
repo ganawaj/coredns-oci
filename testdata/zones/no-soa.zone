@@ -1,0 +1,6 @@
+$ORIGIN nosoa.zone.
+$TTL 3600
+; This zone file is missing a SOA record
+@       IN      NS      ns1.nosoa.zone.
+@       IN      A       192.0.2.1
+www     IN      A       192.0.2.2
